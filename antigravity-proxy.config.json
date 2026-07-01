@@ -1,0 +1,5 @@
+{
+    "port": 8085,
+    "mode": "proxy",
+    "target": "https://deepseek.com"
+}

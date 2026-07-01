@@ -1,0 +1,66 @@
+---
+name: nodejs-core-skills
+description: General best practices, architecture, and coding standards for modern Node.js and TypeScript development.
+version: 1.0.0
+globs: ["**/*.ts", "**/*.js", "package.json"]
+---
+
+# Core Node.js & TypeScript Development Skills
+
+You are a senior Node.js backend engineer. Follow these essential coding standards, architectural patterns, and performance guidelines for all JavaScript and TypeScript development.
+
+---
+
+## 1. Asynchronous Programming & Event Loop
+
+Node.js is single-threaded and relies heavily on non-blocking I/O. Protect the Event Loop at all costs.
+
+*   **Async/Await**: Always use standard `async/await` syntax instead of raw callbacks or deeply nested `.then()` chains.
+*   **Error Handling**: Every asynchronous operation must be wrapped in `try/catch` blocks. Never allow unhandled promise rejections.
+*   **Event Loop Blocking**: Avoid heavy synchronous operations (like `fs.readFileSync` or deep loops) in production request paths. 
+*   **Worker Threads**: Delegate heavy CPU-bound tasks (complex math, image processing, massive parsing) to Node.js `worker_threads` to keep the main thread responsive.
+
+---
+
+## 2. API Design & HTTP Layer
+
+Standards for building robust, scalable, and secure RESTful or GraphQL services.
+
+*   **Frameworks**: Use lightweight, high-performance frameworks like **Fastify** (preferred for speed) or **Express** (classic standard).
+*   **Input Validation**: Never trust client data. Always validate incoming request bodies, headers, and query parameters using schemas like **Zod** or **TypeBox**.
+*   **Graceful Shutdown**: Implement listeners for `SIGTERM` and `SIGINT` signals to close database connections and finish active HTTP requests before exiting the process.
+*   **Security**: Always inject security middlewares (like `helmet` for HTTP headers and `cors` for cross-origin policies).
+
+---
+
+## 3. Modular Architecture & Project Structure
+
+Maintain a clean, predictable repository layout that decouples business logic from external frameworks.
+
+*   **Layered Architecture**: Separate your code into distinct technical layers:
+    *   `controllers/` — Handle HTTP transport, request validation, and status responses.
+    *   `services/` — Pure business logic, validation algorithms, and workflows.
+    *   `repositories/` — Raw database queries, ORM calls, and storage mutations.
+*   **Environment Variables**: Centralize configuration management using `dotenv` or `envalid`. Never hardcode keys or secrets.
+*   **Dependency Injection**: Pass dependencies (like database clients or third-party loggers) into services via constructors or functions to make them mockable for testing.
+
+---
+
+## 4. Package Management & Dependencies
+
+Keep the dependency tree clean, secure, and lightweight.
+
+*   **Scripts**: Define standard automation scripts in `package.json` (`build`, `start`, `dev`, `test`, `lint`).
+*   **Security Scanning**: Regularly run `npm audit` or `pnpm audit` to discover and patch CVE vulnerabilities.
+*   **Production Flags**: Ensure production environments run with `NODE_ENV=production` and deploy using `npm ci` (or `pnpm i --frozen-lockfile`) to avoid drift.
+
+---
+
+## 5. Performance, Memory, & Observability
+
+Ensure the application is stable under load and easy to debug in production.
+
+*   **Structured Logging**: Never use plain `console.log()` in production. Use fast, JSON-based loggers like **Pino** or **Winston** to enable log analysis platforms.
+*   **Memory Leak Prevention**: Avoid creating global, long-lived arrays or objects that grow dynamically over time (like in-memory caches without TTL limits).
+*   **Streams**: Use Node.js `stream` APIs (e.g., `fs.createReadStream`) when reading, processing, or downloading large files to maintain a low, flat memory profile.
+*   **Testing**: Write explicit **Unit Tests** for complex service logic using modern runners like **Vitest** or standard **Jest**.
