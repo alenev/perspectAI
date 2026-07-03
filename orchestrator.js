@@ -146,10 +146,7 @@ let googleMcp;
 let ticketsDbId = "";
 let wikiDbId = "";
 
-let currentTicketTokens = {
-  cacheMiss: 0,
-  output: 0
-};
+let currentTicketTokens = {};
 
 // Cache to prevent duplicate processing due to Notion API indexing latency
 const recentlyProcessedTickets = new Map(); // ticketId -> timestamp
@@ -244,8 +241,11 @@ async function callLLM(model, messages, tools = null, maxTokens = null) {
       : (prompt - hit);
     const output = usage.completion_tokens || 0;
 
-    currentTicketTokens.cacheMiss += miss;
-    currentTicketTokens.output += output;
+    if (!currentTicketTokens[model]) {
+      currentTicketTokens[model] = { cacheMiss: 0, output: 0 };
+    }
+    currentTicketTokens[model].cacheMiss += miss;
+    currentTicketTokens[model].output += output;
   }
 
   const responseMessage = data.choices[0].message;
@@ -259,7 +259,7 @@ async function callLLM(model, messages, tools = null, maxTokens = null) {
 
 // Test model connectivity on startup
 async function verifyModels() {
-  const roles = ["ORCHESTRATOR", "CEO", "CTO", "CCO", "CFO", "MODERATOR"];
+  const roles = ["CEO", "CTO", "CCO", "CFO", "MODERATOR"];
   const provider = (process.env.LLM_PROVIDER || "OPENROUTER").toUpperCase();
   console.log(`[Старт] Перевірка конфігурації та доступності моделей (${provider})...`);
   debugLog("MODEL_VERIFICATION_START", `Provider: ${provider}`);
@@ -650,7 +650,7 @@ ${prompt}`
   ];
 
   while (agentProcessing && agentTurn <= maxAgentTurns) {
-    const agentCurrentCost = currentTicketTokens.cacheMiss + currentTicketTokens.output;
+    const agentCurrentCost = Object.values(currentTicketTokens).reduce((sum, stats) => sum + stats.cacheMiss + stats.output, 0);
     if (agentCurrentCost > limit) {
       finalAgentReply = `⚠️ [Помилка] Виконання агента ${role} зупинено через перевищення ліміту токенів.`;
       debugLog("AGENT_TOKEN_LIMIT_EXCEEDED", `Role: ${role}, Cost: ${agentCurrentCost} > ${limit}`);
@@ -802,8 +802,7 @@ async function processTicket(ticket) {
   debugLog("TICKET_LOCK_ACQUIRED", `Ticket: ${ticketId}`);
 
   try {
-    currentTicketTokens.cacheMiss = 0;
-    currentTicketTokens.output = 0;
+    currentTicketTokens = {};
 
     const ticketTitle = ticket.properties.Name?.title?.map(t => t.plain_text).join("") || "Без назви";
     const ticketStatus = ticket.properties.Status?.status?.name || "Невідомо";
@@ -937,8 +936,27 @@ async function processTicket(ticket) {
       }
 
       // Append SUMMARY TOKENS
-      const totalTokensUsed = currentTicketTokens.cacheMiss + currentTicketTokens.output;
-      const summaryTokensText = `=== SUMMARY TOKENS ===\nЗагальна кількість витрачених токенів на обробку тікета:\n- Input (Cache miss): ${currentTicketTokens.cacheMiss}\n- Output: ${currentTicketTokens.output}\n- Всього (Input miss + Output): ${totalTokensUsed} токенів`;
+      let summaryTokensText = "";
+      const isShort = process.env.TOKENS_SUMMARY_SHORT === "true";
+      let totalTokensUsed = 0;
+
+      if (isShort) {
+        summaryTokensText = "=== SUMMARY TOKENS ===\n";
+        for (const [mName, stats] of Object.entries(currentTicketTokens)) {
+          const mTotal = stats.cacheMiss + stats.output;
+          totalTokensUsed += mTotal;
+          summaryTokensText += `- ${mName}: ${stats.cacheMiss} + ${stats.output} = ${mTotal}\n`;
+        }
+        summaryTokensText += `Total: ${totalTokensUsed}`;
+      } else {
+        summaryTokensText = "=== SUMMARY TOKENS ===\nЗагальна кількість витрачених токенів на обробку тікета (детально по моделям):\n";
+        for (const [mName, stats] of Object.entries(currentTicketTokens)) {
+          const mTotal = stats.cacheMiss + stats.output;
+          totalTokensUsed += mTotal;
+          summaryTokensText += `Модель: ${mName}\n- Input (Cache miss): ${stats.cacheMiss}\n- Output: ${stats.output}\n- Всього: ${mTotal}\n\n`;
+        }
+        summaryTokensText += `Загалом по всім моделям: ${totalTokensUsed} токенів`;
+      }
       try {
         await notionAppendComment(ticketId, summaryTokensText);
         console.log(`[Токени] Загальний звіт додано до коментарів: ${totalTokensUsed} токенів.`);
@@ -1107,7 +1125,7 @@ function terminatePreviousInstances() {
             try {
               process.kill(pid, "SIGKILL");
             } catch (err) {
-              try { execSync(`taskkill /F /PID ${pid}`); } catch (kErr) {}
+              try { execSync(`taskkill /F /PID ${pid}`); } catch (kErr) { }
             }
           }
         }
@@ -1129,7 +1147,7 @@ function terminatePreviousInstances() {
             console.log(`[Ініціалізація] Завершення старого процесу orchestrator.js з PID ${pid}...`);
             try {
               process.kill(pid, "SIGKILL");
-            } catch (err) {}
+            } catch (err) { }
           }
         }
       }
@@ -1142,7 +1160,7 @@ function terminatePreviousInstances() {
   // Also write/update the PID file
   try {
     fs.writeFileSync("orchestrator.pid", currentPid.toString(), "utf-8");
-  } catch (e) {}
+  } catch (e) { }
 }
 
 async function debugTicketData(queryOrId) {
